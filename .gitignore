@@ -1,0 +1,20 @@
+# 環境変数ファイル（トークン流出防止）
+.env
+*.env.local
+
+# ビルドバイナリ
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# OS固有ファイル
+.DS_Store
+Thumbs.db
+
+# エディタ設定
+.vscode/
+.idea/
