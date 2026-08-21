@@ -92,6 +92,9 @@ func (s *AIService) getFallbackMessage(personality, eventType, username string) 
 			"PR_Merged": {
 				"無事にマージされたじゃない！…ちょっとだけ見直したんだから感謝しなさいよね！",
 			},
+			"Issue_Opened": {
+				fmt.Sprintf("新しいIssueが立ったわよ、%s。放置しないでサッサと片付けなさいよね！", username),
+			},
 		},
 		"strict": {
 			"Push": {
@@ -103,6 +106,9 @@ func (s *AIService) getFallbackMessage(personality, eventType, username string) 
 			},
 			"PR_Merged": {
 				"マージ完了を確認した。すぐに次のタスクの設計に取り掛かれ。",
+			},
+			"Issue_Opened": {
+				fmt.Sprintf("Issueを確認した。%s、仕様を正確に把握して優先度を決めろ。", username),
 			},
 		},
 		"relaxed": {
@@ -116,6 +122,9 @@ func (s *AIService) getFallbackMessage(personality, eventType, username string) 
 			"PR_Merged": {
 				"わ〜いマージおめでとう！今日はいっぱい休んでいいよ〜。",
 			},
+			"Issue_Opened": {
+				"Issueができたみたい〜。無理のないスケジュールでやろうね〜。",
+			},
 		},
 		"passionate": {
 			"Push": {
@@ -128,6 +137,9 @@ func (s *AIService) getFallbackMessage(personality, eventType, username string) 
 			"PR_Merged": {
 				"マージ完了だぁぁーッ！！偉大な一歩を踏み出したぞ！次も燃えていこうぜ！！",
 			},
+			"Issue_Opened": {
+				fmt.Sprintf("新しい課題（Issue）の登場だ！%s、気合を入れて立ち向かおうぜ！！", username),
+			},
 		},
 		"gentle": {
 			"Push": {
@@ -139,6 +151,9 @@ func (s *AIService) getFallbackMessage(personality, eventType, username string) 
 			},
 			"PR_Merged": {
 				"無事にマージされましたね…！本当にお疲れ様でした…！",
+			},
+			"Issue_Opened": {
+				fmt.Sprintf("新しいIssueが作成されました…！%sさん、困った時は周囲に相談してくださいね。", username),
 			},
 		},
 	}

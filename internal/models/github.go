@@ -52,3 +52,23 @@ type GitHubPRPayload struct {
 		Login string `json:"login"`
 	} `json:"sender"`
 }
+
+// GitHub Issues Webhook ペイロード
+type GitHubIssuePayload struct {
+	Action string `json:"action"` // opened, closed など
+	Issue  struct {
+		Title   string `json:"title"`
+		HTMLURL string `json:"html_url"`
+		Number  int    `json:"number"`
+		User    struct {
+			Login string `json:"login"`
+		} `json:"user"`
+	} `json:"issue"`
+	Repository struct {
+		Name    string `json:"name"`
+		HTMLURL string `json:"html_url"`
+	} `json:"repository"`
+	Sender struct {
+		Login string `json:"login"`
+	} `json:"sender"`
+}

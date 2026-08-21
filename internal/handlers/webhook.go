@@ -59,6 +59,8 @@ func (h *WebhookHandler) HandleGitHubWebhook(c echo.Context) error {
 		return h.handlePushEvent(bodyBytes, personality, c)
 	case "pull_request":
 		return h.handlePREvent(bodyBytes, personality, c)
+	case "issues":
+		return h.handleIssueEvent(bodyBytes, personality, c)
 	case "ping":
 		log.Println("🏓 GitHub Ping イベントを受信しました")
 		_ = bot.SendEmbed("🏓 GitHub Webhook 疎通確認", "GitHub との Webhook 接続が正常に確認されました！", 0x00AAFF, nil)
@@ -144,6 +146,32 @@ func (h *WebhookHandler) handlePREvent(body []byte, personality string, c echo.C
 			{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
 		}
 		_ = bot.SendEmbed("🎉 Pull Request がマージされました！", "", 0x9B59B6, fields)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"status": "success"})
+}
+
+func (h *WebhookHandler) handleIssueEvent(body []byte, personality string, c echo.Context) error {
+	var payload models.GitHubIssuePayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "JSONパース失敗"})
+	}
+
+	if payload.Action == "opened" {
+		username := payload.Issue.User.Login
+		repoName := payload.Repository.Name
+		title := payload.Issue.Title
+
+		aiComment := h.aiService.GenerateComment(personality, "Issue_Opened", username, repoName, title, "Issue作成")
+
+		fields := []*discordgo.MessageEmbedField{
+			{Name: "📦 Repository", Value: fmt.Sprintf("[%s](%s)", repoName, payload.Repository.HTMLURL), Inline: true},
+			{Name: "👤 Author", Value: username, Inline: true},
+			{Name: "📌 Issue Title", Value: fmt.Sprintf("[#%d %s](%s)", payload.Issue.Number, title, payload.Issue.HTMLURL), Inline: false},
+			{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
+		}
+
+		_ = bot.SendEmbed("🎫 新しい Issue が作成されました！", "", 0xE67E22, fields)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "success"})

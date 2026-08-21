@@ -27,6 +27,7 @@ func main() {
 
 	// サービス & ハンドラー初期化
 	aiService := services.NewAIService()
+	bot.AIServiceInstance = aiService
 	webhookHandler := handlers.NewWebhookHandler(aiService)
 
 	// Echo サーバー初期化
