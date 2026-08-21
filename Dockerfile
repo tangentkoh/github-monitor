@@ -3,12 +3,17 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
+# 自動ツールチェーン更新を許可
+ENV GOTOOLCHAIN=auto
+
+RUN apk add --no-cache git
+
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/server cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/server cmd/server/main.go
 
 # 実行ステージ
 FROM alpine:latest
