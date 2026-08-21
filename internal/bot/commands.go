@@ -3,7 +3,6 @@ package bot
 import (
 	"fmt"
 	"log"
-	"os"
 
 	"github-monitor/internal/services"
 
@@ -37,6 +36,10 @@ var Commands = []*discordgo.ApplicationCommand{
 		Description: "現在の AI バディの状態を確認します",
 	},
 	{
+		Name:        "setchannel",
+		Description: "このチャンネルを GitHub の通知先に設定します",
+	},
+	{
 		Name:        "simulate",
 		Description: "【デモ用】GitHubイベントを擬似的に発生させます",
 		Options: []*discordgo.ApplicationCommandOption{
@@ -62,17 +65,15 @@ var Commands = []*discordgo.ApplicationCommand{
 	},
 }
 
+// グローバルコマンドとして登録（第2引数を空文字にする）
 func RegisterCommands(s *discordgo.Session) error {
-	guildID := os.Getenv("DISCORD_GUILD_ID")
-
 	for _, cmd := range Commands {
-		// 🎯 guildID を渡すことでサーバー限定コマンドとして即時反映
-		_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, cmd)
+		_, err := s.ApplicationCommandCreate(s.State.User.ID, "", cmd)
 		if err != nil {
 			return fmt.Errorf("コマンド登録失敗 [%s]: %w", cmd.Name, err)
 		}
 	}
-	log.Printf("✅ Discord スラッシュコマンドを即時登録しました (Guild: %s)", guildID)
+	log.Println("🌍 Discord グローバルスラッシュコマンドを登録しました")
 	return nil
 }
 
@@ -95,7 +96,16 @@ func CommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	case "status":
 		current := GetPersonality()
-		msg := fmt.Sprintf("📊 **現在のステータス**\n• 性格モード: **%s**\n• 監視チャンネル: <#%s>\n• システム: 稼働中 (DBレス/オンメモリ)", current, ChannelID)
+		targetCh := GetChannelID()
+		msg := fmt.Sprintf("📊 **現在のステータス**\n• 性格モード: **%s**\n• 監視チャンネル: <#%s>\n• システム: 稼働中 (Render常時デプロイ)", current, targetCh)
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{Content: msg},
+		})
+
+	case "setchannel":
+		SetChannelID(i.ChannelID)
+		msg := fmt.Sprintf("📢 通知先チャンネルを <#%s> に更新しました！", i.ChannelID)
 		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{Content: msg},
@@ -108,7 +118,7 @@ func CommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		})
 
 		eventType := data.Options[0].StringValue()
-		customMsg := "feat: ユーザー認証の実装"
+		customMsg := "feat: 部活プロジェクト機能追加"
 		if len(data.Options) > 1 && data.Options[1].StringValue() != "" {
 			customMsg = data.Options[1].StringValue()
 		}
@@ -117,20 +127,20 @@ func CommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 		switch eventType {
 		case "push":
-			aiComment := AIServiceInstance.GenerateComment(personality, "Push", "DemoUser", "github-monitor", customMsg, "cmd/server/main.go, internal/auth.go")
+			aiComment := AIServiceInstance.GenerateComment(personality, "Push", "DemoUser", "club-project", customMsg, "cmd/main.go, README.md")
 			fields := []*discordgo.MessageEmbedField{
-				{Name: "📦 Repository", Value: "github-monitor (Demo)", Inline: true},
+				{Name: "📦 Repository", Value: "club-project (Demo)", Inline: true},
 				{Name: "👤 Author", Value: "DemoUser", Inline: true},
-				{Name: "📁 変更ファイル", Value: "`cmd/server/main.go, internal/auth.go`", Inline: false},
+				{Name: "📁 変更ファイル", Value: "`cmd/main.go, README.md`", Inline: false},
 				{Name: "💬 Commit Message", Value: fmt.Sprintf("```\n%s\n```", customMsg), Inline: false},
 				{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
 			}
 			_ = SendEmbed("🚀 新しいコードが Push されました！ (Simulated)", "", 0x00FF88, fields)
 
 		case "pr_opened":
-			aiComment := AIServiceInstance.GenerateComment(personality, "PR_Opened", "DemoUser", "github-monitor", customMsg, "新規PR")
+			aiComment := AIServiceInstance.GenerateComment(personality, "PR_Opened", "DemoUser", "club-project", customMsg, "新規PR")
 			fields := []*discordgo.MessageEmbedField{
-				{Name: "📦 Repository", Value: "github-monitor (Demo)", Inline: true},
+				{Name: "📦 Repository", Value: "club-project (Demo)", Inline: true},
 				{Name: "👤 Created by", Value: "DemoUser", Inline: true},
 				{Name: "📑 PR Title", Value: customMsg, Inline: false},
 				{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
@@ -138,9 +148,9 @@ func CommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			_ = SendEmbed("📢 新しい Pull Request が作成されました！ (Simulated)", "", 0x3498DB, fields)
 
 		case "pr_merged":
-			aiComment := AIServiceInstance.GenerateComment(personality, "PR_Merged", "DemoUser", "github-monitor", customMsg, "PRマージ")
+			aiComment := AIServiceInstance.GenerateComment(personality, "PR_Merged", "DemoUser", "club-project", customMsg, "PRマージ")
 			fields := []*discordgo.MessageEmbedField{
-				{Name: "📦 Repository", Value: "github-monitor (Demo)", Inline: true},
+				{Name: "📦 Repository", Value: "club-project (Demo)", Inline: true},
 				{Name: "👤 Merged by", Value: "DemoUser", Inline: true},
 				{Name: "🎉 PR Title", Value: customMsg, Inline: false},
 				{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
@@ -148,11 +158,11 @@ func CommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			_ = SendEmbed("🎉 Pull Request がマージされました！ (Simulated)", "", 0x9B59B6, fields)
 
 		case "issue_opened":
-			aiComment := AIServiceInstance.GenerateComment(personality, "Issue_Opened", "DemoUser", "github-monitor", customMsg, "Issue作成")
+			aiComment := AIServiceInstance.GenerateComment(personality, "Issue_Opened", "DemoUser", "club-project", customMsg, "Issue作成")
 			fields := []*discordgo.MessageEmbedField{
-				{Name: "📦 Repository", Value: "github-monitor (Demo)", Inline: true},
+				{Name: "📦 Repository", Value: "club-project (Demo)", Inline: true},
 				{Name: "👤 Author", Value: "DemoUser", Inline: true},
-				{Name: "📌 Issue Title", Value: fmt.Sprintf("#12 %s", customMsg), Inline: false},
+				{Name: "📌 Issue Title", Value: fmt.Sprintf("#42 %s", customMsg), Inline: false},
 				{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
 			}
 			_ = SendEmbed("🎫 新しい Issue が作成されました！ (Simulated)", "", 0xE67E22, fields)

@@ -11,9 +11,9 @@ import (
 
 var (
 	CurrentPersonality = "tsundere"
+	ChannelID          string
 	mu                 sync.RWMutex
 	Session            *discordgo.Session
-	ChannelID          string
 )
 
 func GetPersonality() string {
@@ -28,12 +28,24 @@ func SetPersonality(p string) {
 	CurrentPersonality = p
 }
 
+func GetChannelID() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return ChannelID
+}
+
+func SetChannelID(ch string) {
+	mu.Lock()
+	defer mu.Unlock()
+	ChannelID = ch
+}
+
 func InitBot() (*discordgo.Session, error) {
 	token := os.Getenv("DISCORD_BOT_TOKEN")
 	ChannelID = os.Getenv("DISCORD_CHANNEL_ID")
 
-	if token == "" || ChannelID == "" {
-		return nil, fmt.Errorf("DISCORD_BOT_TOKEN または DISCORD_CHANNEL_ID が設定されていません")
+	if token == "" {
+		return nil, fmt.Errorf("DISCORD_BOT_TOKEN が設定されていません")
 	}
 
 	dg, err := discordgo.New("Bot " + token)
@@ -41,16 +53,13 @@ func InitBot() (*discordgo.Session, error) {
 		return nil, fmt.Errorf("Discord セッション作成エラー: %w", err)
 	}
 
-	// イベントハンドラー追加
 	dg.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
 		log.Printf("🤖 Discord Bot [%s#%s] が正常にオンラインになりました！", s.State.User.Username, s.State.User.Discriminator)
-		// コマンド登録
 		if err := RegisterCommands(s); err != nil {
 			log.Printf("⚠️ コマンド登録エラー: %v", err)
 		}
 	})
 
-	// スラッシュコマンド受信ハンドラー
 	dg.AddHandler(CommandHandler)
 
 	err = dg.Open()
@@ -63,8 +72,9 @@ func InitBot() (*discordgo.Session, error) {
 }
 
 func SendEmbed(title, description string, color int, fields []*discordgo.MessageEmbedField) error {
-	if Session == nil || ChannelID == "" {
-		return fmt.Errorf("Discord Bot が初期化されていません")
+	targetCh := GetChannelID()
+	if Session == nil || targetCh == "" {
+		return fmt.Errorf("Discord Bot が初期化されていないか、通知先チャンネルが未設定です")
 	}
 
 	embed := &discordgo.MessageEmbed{
@@ -74,6 +84,6 @@ func SendEmbed(title, description string, color int, fields []*discordgo.Message
 		Fields:      fields,
 	}
 
-	_, err := Session.ChannelMessageSendEmbed(ChannelID, embed)
+	_, err := Session.ChannelMessageSendEmbed(targetCh, embed)
 	return err
 }
