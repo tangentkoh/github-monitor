@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github-monitor/internal/bot"
 	"github-monitor/internal/models"
@@ -27,10 +28,9 @@ func NewWebhookHandler(aiService *services.AIService) *WebhookHandler {
 	return &WebhookHandler{aiService: aiService}
 }
 
-// HMAC-SHA256 署名検証
 func verifySignature(secret string, body []byte, signature string) bool {
 	if signature == "" || secret == "" {
-		return true // シークレット未設定時はスキップ（ローカルテスト用）
+		return true
 	}
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
@@ -45,7 +45,6 @@ func (h *WebhookHandler) HandleGitHubWebhook(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "リクエストボディ読み込み失敗"})
 	}
 
-	// 署名検証
 	secret := os.Getenv("GITHUB_WEBHOOK_SECRET")
 	signature := c.Request().Header.Get("X-Hub-Signature-256")
 	if !verifySignature(secret, bodyBytes, signature) {
@@ -69,7 +68,6 @@ func (h *WebhookHandler) HandleGitHubWebhook(c echo.Context) error {
 	}
 }
 
-// Push イベント処理
 func (h *WebhookHandler) handlePushEvent(body []byte, personality string, c echo.Context) error {
 	var payload models.GitHubPushPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -79,16 +77,33 @@ func (h *WebhookHandler) handlePushEvent(body []byte, personality string, c echo
 	username := payload.Pusher.Name
 	repoName := payload.Repository.Name
 	commitMsg := "進捗の更新"
+	var modifiedFiles []string
+
 	if len(payload.Commits) > 0 {
-		commitMsg = payload.Commits[len(payload.Commits)-1].Message
+		latestCommit := payload.Commits[len(payload.Commits)-1]
+		commitMsg = latestCommit.Message
+		modifiedFiles = append(modifiedFiles, latestCommit.Added...)
+		modifiedFiles = append(modifiedFiles, latestCommit.Modified...)
 	}
 
-	aiComment := h.aiService.GenerateComment(personality, "Push", username, repoName, commitMsg)
+	// 変更ファイル要約の作成
+	filesSummary := "なし"
+	if len(modifiedFiles) > 0 {
+		if len(modifiedFiles) > 5 {
+			filesSummary = strings.Join(modifiedFiles[:5], ", ") + fmt.Sprintf(" 他 %d 件", len(modifiedFiles)-5)
+		} else {
+			filesSummary = strings.Join(modifiedFiles, ", ")
+		}
+	}
+
+	// AI アドバイス生成
+	aiComment := h.aiService.GenerateComment(personality, "Push", username, repoName, commitMsg, filesSummary)
 
 	fields := []*discordgo.MessageEmbedField{
-		{Name: "📦 Repository", Value: repoName, Inline: true},
+		{Name: "📦 Repository", Value: fmt.Sprintf("[%s](%s)", repoName, payload.Repository.HTMLURL), Inline: true},
 		{Name: "👤 Author", Value: username, Inline: true},
-		{Name: "💬 Latest Commit", Value: fmt.Sprintf("`%s`", commitMsg), Inline: false},
+		{Name: "📁 変更ファイル", Value: fmt.Sprintf("`%s`", filesSummary), Inline: false},
+		{Name: "💬 Commit Message", Value: fmt.Sprintf("```\n%s\n```", commitMsg), Inline: false},
 		{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
 	}
 
@@ -96,7 +111,6 @@ func (h *WebhookHandler) handlePushEvent(body []byte, personality string, c echo
 	return c.JSON(http.StatusOK, map[string]string{"status": "success"})
 }
 
-// Pull Request イベント処理
 func (h *WebhookHandler) handlePREvent(body []byte, personality string, c echo.Context) error {
 	var payload models.GitHubPRPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -109,7 +123,7 @@ func (h *WebhookHandler) handlePREvent(body []byte, personality string, c echo.C
 
 	if action == "opened" {
 		username := payload.PullRequest.User.Login
-		aiComment := h.aiService.GenerateComment(personality, "PR_Opened", username, repoName, prTitle)
+		aiComment := h.aiService.GenerateComment(personality, "PR_Opened", username, repoName, prTitle, "新規Pull Request作成")
 
 		fields := []*discordgo.MessageEmbedField{
 			{Name: "📦 Repository", Value: repoName, Inline: true},
@@ -121,7 +135,7 @@ func (h *WebhookHandler) handlePREvent(body []byte, personality string, c echo.C
 
 	} else if action == "closed" && payload.PullRequest.Merged {
 		username := payload.PullRequest.MergedBy.Login
-		aiComment := h.aiService.GenerateComment(personality, "PR_Merged", username, repoName, prTitle)
+		aiComment := h.aiService.GenerateComment(personality, "PR_Merged", username, repoName, prTitle, "Pull Requestマージ完了")
 
 		fields := []*discordgo.MessageEmbedField{
 			{Name: "📦 Repository", Value: repoName, Inline: true},

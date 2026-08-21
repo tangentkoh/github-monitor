@@ -34,8 +34,8 @@ func NewAIService() *AIService {
 	return &AIService{client: client}
 }
 
-// イベントに応じた AI コメント生成
-func (s *AIService) GenerateComment(personality, eventType, username, repoName, detail string) string {
+// イベントに応じた AI コメント生成（ファイル変更・詳細情報対応）
+func (s *AIService) GenerateComment(personality, eventType, username, repoName, detail, filesSummary string) string {
 	if s.client == nil {
 		return s.getFallbackMessage(personality, eventType, username)
 	}
@@ -43,11 +43,11 @@ func (s *AIService) GenerateComment(personality, eventType, username, repoName, 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	model := s.client.GenerativeModel("gemini-2.5-flash")
+	model := s.client.GenerativeModel("gemini-3.6-flash")
 	model.SetTemperature(0.7)
 
 	prompt := fmt.Sprintf(`あなたは開発者をサポートするAIバディです。
-以下の状況に合わせて、指定された性格になりきって1〜2文程度の簡潔なメッセージ（日本語）を返してください。
+以下の開発状況に合わせて、指定された性格になりきって、コミット内容や変更ファイルを踏まえた「リアクション」と「軽いアドバイスや次のタスク提案」を含む1〜2文程度の簡潔なメッセージ（日本語）を返してください。
 
 【設定】
 - 性格: %s
@@ -56,14 +56,15 @@ func (s *AIService) GenerateComment(personality, eventType, username, repoName, 
   - relaxed: のんびり脱力系。まったりと優しく労う。
   - passionate: 熱血コーチ。ハイテンションで情熱的に応援する。
   - gentle: 温和・臆病。控えめで優しく丁寧にフォローする。
-- イベント種別: %s (Push / PR作成 / PRマージ)
+- イベント種別: %s (Push / PR_Opened / PR_Merged)
 - ユーザー名: %s
 - リポジトリ名: %s
-- 詳細情報: %s
+- 主な内容: %s
+- 変更ファイル要約: %s
 
 【制約】
 - 挨拶や余計な前置きは不要。セリフのみを出力すること。
-- 100文字以内で簡潔に。`, personality, eventType, username, repoName, detail)
+- 100〜120文字以内で簡潔にまとめること。`, personality, eventType, username, repoName, detail, filesSummary)
 
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil || len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
@@ -78,12 +79,11 @@ func (s *AIService) GenerateComment(personality, eventType, username, repoName, 
 	return s.getFallbackMessage(personality, eventType, username)
 }
 
-// オフライン・エラー時のローカル定型文（性格 x イベント）
 func (s *AIService) getFallbackMessage(personality, eventType, username string) string {
 	fallbacks := map[string]map[string][]string{
 		"tsundere": {
 			"Push": {
-				fmt.Sprintf("べ、別に%sのコミットなんて待ってなかったんだからね！…でも進んだのは認めてあげるわ。", username),
+				fmt.Sprintf("べ、別に%sのコミットなんて待ってなかったんだからね！…でも進んだのは認めてあげるわ。次はテストでも書いたらどう？", username),
 				"ふん、やっとPushしたの？次はもっとスマートなコードにしなさいよね！",
 			},
 			"PR_Opened": {
@@ -95,11 +95,11 @@ func (s *AIService) getFallbackMessage(personality, eventType, username string) 
 		},
 		"strict": {
 			"Push": {
-				fmt.Sprintf("%s、Pushを確認した。だがここで気を抜くな、テストは通っているな？", username),
-				"進捗は出たようだな。次はリファクタリングを忘れるなよ。",
+				fmt.Sprintf("%s、Pushを確認した。だがここで気を抜くな、テストとレビューは済んでいるな？", username),
+				"進捗は認める。次はリファクタリングを忘れるなよ。",
 			},
 			"PR_Opened": {
-				fmt.Sprintf("PRを確認した。%s、妥協のないコードになっているかレビューを行う。", username),
+				fmt.Sprintf("PRを確認した。%s、妥協のないコードになっているか厳しくチェックする。", username),
 			},
 			"PR_Merged": {
 				"マージ完了を確認した。すぐに次のタスクの設計に取り掛かれ。",
@@ -107,7 +107,7 @@ func (s *AIService) getFallbackMessage(personality, eventType, username string) 
 		},
 		"relaxed": {
 			"Push": {
-				fmt.Sprintf("おっ、%sくんコミットお疲れさま〜。お茶でも飲んで一服しよ〜。", username),
+				fmt.Sprintf("おっ、%sくんコミットお疲れさま〜。お茶でも飲んで一息ついてから次いこ〜。", username),
 				"いい感じに進んでるね〜。無理せずマイペースにいこう〜。",
 			},
 			"PR_Opened": {
@@ -119,7 +119,7 @@ func (s *AIService) getFallbackMessage(personality, eventType, username string) 
 		},
 		"passionate": {
 			"Push": {
-				fmt.Sprintf("うおぉぉーっ！%s、熱いコミットが届いたぜ！その調子で限界を突破しろ！！", username),
+				fmt.Sprintf("うおぉぉーっ！%s、熱いコミットが届いたぜ！その調子で次の機能も一気に突破しろ！！", username),
 				"ナイスPushだ！！お前のコードに対する情熱、確かに受け取ったぜ！！",
 			},
 			"PR_Opened": {
@@ -131,7 +131,7 @@ func (s *AIService) getFallbackMessage(personality, eventType, username string) 
 		},
 		"gentle": {
 			"Push": {
-				fmt.Sprintf("%sさん、コミットありがとうございます…！無理のないペースで頑張ってくださいね。", username),
+				fmt.Sprintf("%sさん、コミットありがとうございます…！無理のないペースで次も進めてくださいね。", username),
 				"着実に進んでいて素敵です…！お体には気をつけてくださいね。",
 			},
 			"PR_Opened": {
