@@ -40,7 +40,7 @@ func (s *AIService) GenerateComment(personality, eventType, username, repoName, 
 		return s.getFallbackMessage(personality, eventType, username)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	model := s.client.GenerativeModel("gemini-3.6-flash")
@@ -52,8 +52,8 @@ func (s *AIService) GenerateComment(personality, eventType, username, repoName, 
 【設定】
 - 性格: %s
   - tsundere: ツンデレ。素直になれないが本当は進捗を喜んでいる。
-  - strict: 厳しい鬼上司。妥協を許さずコードの質にシビアだが期待している。
-  - relaxed: のんびり脱力系。まったりと優しく労う。
+  - strict: 厳しい鬼上司。妥協を許さずコードの質に非常にシビア。
+  - relaxed: のんびり脱力系。まったりと優しく労う。「うへ～」が口癖。
   - passionate: 熱血コーチ。ハイテンションで情熱的に応援する。
   - gentle: 温和・臆病。控えめで優しく丁寧にフォローする。
 - イベント種別: %s (Push / PR_Opened / PR_Merged)
