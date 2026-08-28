@@ -34,18 +34,11 @@ func NewAIService() *AIService {
 	return &AIService{client: client}
 }
 
-// イベントに応じた AI コメント生成
+// イベントに応じた AI コメント生成（複数モデル順次フォールバック対応）
 func (s *AIService) GenerateComment(personality, eventType, username, repoName, detail, filesSummary string) string {
 	if s.client == nil {
 		return s.getFallbackMessage(personality, eventType, username)
 	}
-
-	// タイムアウトを 10 秒から 20 秒に延長
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	model := s.client.GenerativeModel("gemini-3.6-flash")
-	model.SetTemperature(0.7)
 
 	prompt := fmt.Sprintf(`あなたは開発者をサポートするAIバディです。
 以下の開発状況に合わせて、指定された性格になりきって、コミット内容や変更ファイルを踏まえた「リアクション」と「軽いアドバイスや次のタスク提案」を含む1〜2文程度の簡潔なメッセージ（日本語）を返してください。
@@ -62,16 +55,34 @@ func (s *AIService) GenerateComment(personality, eventType, username, repoName, 
 - 挨拶や余計な前置きは不要。セリフのみを出力すること。
 - 100〜120文字以内で簡潔にまとめること。`, personality, eventType, username, repoName, detail, filesSummary)
 
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
-	if err != nil || len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		log.Printf("⚠️ Gemini API 呼び出し失敗: %v -> オフライン定型文を使用", err)
-		return s.getFallbackMessage(personality, eventType, username)
+	// 試行するモデルの優先順位: 3.7 -> 3.6 -> 3.5
+	targetModels := []string{
+		"gemini-3.7-flash",
+		"gemini-3.6-flash",
+		"gemini-3.5-flash",
 	}
 
-	if textPart, ok := resp.Candidates[0].Content.Parts[0].(genai.Text); ok {
-		return string(textPart)
+	for _, modelName := range targetModels {
+		// 各モデル試行ごとに 10 秒のタイムアウトを設定
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		
+		model := s.client.GenerativeModel(modelName)
+		model.SetTemperature(0.7)
+
+		resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+		cancel()
+
+		if err == nil && len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
+			if textPart, ok := resp.Candidates[0].Content.Parts[0].(genai.Text); ok {
+				log.Printf("✨ [%s] での AI メッセージ生成に成功しました", modelName)
+				return string(textPart)
+			}
+		}
+
+		log.Printf("⚠️ [%s] 呼び出し失敗: %v -> 次のモデルへフォールバックします", modelName, err)
 	}
 
+	log.Println("🚨 全モデルの呼び出しに失敗したため、オフライン定型文を使用します")
 	return s.getFallbackMessage(personality, eventType, username)
 }
 
@@ -79,14 +90,14 @@ func (s *AIService) getFallbackMessage(personality, eventType, username string) 
 	fallbacks := map[string]map[string][]string{
 		"tsundere": {
 			"Push": {
-				fmt.Sprintf("べ、別に%sのコミットなんて待ってなかったんだからね！…でも進んだのは認めてあげるわ。次はテストでも書いたらどう？", username),
+				fmt.Sprintf("べ、別に%sのコミットなんて待ってなかったんだからね！...でも進んだのは認めてあげるわ。次はテストでも書いたらどう？", username),
 				"ふん、やっとPushしたの？次はもっとスマートなコードにしなさいよね！",
 			},
 			"PR_Opened": {
 				fmt.Sprintf("%s、PR出したのね。バグだらけじゃないか私がチェックしてあげるわ！", username),
 			},
 			"PR_Merged": {
-				"無事にマージされたじゃない！…ちょっとだけ見直したんだから感謝しなさいよね！",
+				"無事にマージされたじゃない！...ちょっとだけ見直したんだから感謝しなさいよね！",
 			},
 			"Issue_Opened": {
 				fmt.Sprintf("新しいIssueが立ったわよ、%s。放置しないでサッサと片付けなさいよね！", username),
