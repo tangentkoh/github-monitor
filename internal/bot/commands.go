@@ -112,60 +112,92 @@ func CommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		})
 
 	case "simulate":
-		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{Content: "⚡ 擬似 GitHub イベントを発火しました！"},
+		// 1. 3秒タイムアウトを防ぐため即座に Deferred 応答
+		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 		})
-
-		eventType := data.Options[0].StringValue()
-		customMsg := "feat: 部活プロジェクト機能追加"
-		if len(data.Options) > 1 && data.Options[1].StringValue() != "" {
-			customMsg = data.Options[1].StringValue()
+		if err != nil {
+			log.Printf("⚠️ InteractionRespond エラー: %v", err)
+			return
 		}
 
-		personality := GetPersonality()
-
-		switch eventType {
-		case "push":
-			aiComment := AIServiceInstance.GenerateComment(personality, "Push", "DemoUser", "club-project", customMsg, "cmd/main.go, README.md")
-			fields := []*discordgo.MessageEmbedField{
-				{Name: "📦 Repository", Value: "club-project (Demo)", Inline: true},
-				{Name: "👤 Author", Value: "DemoUser", Inline: true},
-				{Name: "📁 変更ファイル", Value: "`cmd/main.go, README.md`", Inline: false},
-				{Name: "💬 Commit Message", Value: fmt.Sprintf("```\n%s\n```", customMsg), Inline: false},
-				{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
+		// 2. バックグラウンドで生成して上書き更新
+		go func() {
+			eventType := data.Options[0].StringValue()
+			customMsg := "feat: テスト機能の実装"
+			if len(data.Options) > 1 && data.Options[1].StringValue() != "" {
+				customMsg = data.Options[1].StringValue()
 			}
-			_ = SendEmbed("🚀 新しいコードが Push されました！ (Simulated)", "", 0x00FF88, fields)
 
-		case "pr_opened":
-			aiComment := AIServiceInstance.GenerateComment(personality, "PR_Opened", "DemoUser", "club-project", customMsg, "新規PR")
-			fields := []*discordgo.MessageEmbedField{
-				{Name: "📦 Repository", Value: "club-project (Demo)", Inline: true},
-				{Name: "👤 Created by", Value: "DemoUser", Inline: true},
-				{Name: "📑 PR Title", Value: customMsg, Inline: false},
-				{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
-			}
-			_ = SendEmbed("📢 新しい Pull Request が作成されました！ (Simulated)", "", 0x3498DB, fields)
+			personality := GetPersonality()
+			var embed *discordgo.MessageEmbed
 
-		case "pr_merged":
-			aiComment := AIServiceInstance.GenerateComment(personality, "PR_Merged", "DemoUser", "club-project", customMsg, "PRマージ")
-			fields := []*discordgo.MessageEmbedField{
-				{Name: "📦 Repository", Value: "club-project (Demo)", Inline: true},
-				{Name: "👤 Merged by", Value: "DemoUser", Inline: true},
-				{Name: "🎉 PR Title", Value: customMsg, Inline: false},
-				{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
-			}
-			_ = SendEmbed("🎉 Pull Request がマージされました！ (Simulated)", "", 0x9B59B6, fields)
+			switch eventType {
+			case "push":
+				aiComment := AIServiceInstance.GenerateComment(personality, "Push", "DemoUser", "test-repo", customMsg, "cmd/server/main.go")
+				fields := []*discordgo.MessageEmbedField{
+					{Name: "📦 Repository", Value: "test-repo (Demo)", Inline: true},
+					{Name: "👤 Author", Value: "DemoUser", Inline: true},
+					{Name: "📁 変更ファイル", Value: "`cmd/server/main.go`", Inline: false},
+					{Name: "💬 Commit Message", Value: fmt.Sprintf("```\n%s\n```", customMsg), Inline: false},
+					{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
+				}
+				embed = &discordgo.MessageEmbed{
+					Title:  "🚀 新しいコードが Push されました！ (Simulated)",
+					Color:  0x00FF88,
+					Fields: fields,
+				}
 
-		case "issue_opened":
-			aiComment := AIServiceInstance.GenerateComment(personality, "Issue_Opened", "DemoUser", "club-project", customMsg, "Issue作成")
-			fields := []*discordgo.MessageEmbedField{
-				{Name: "📦 Repository", Value: "club-project (Demo)", Inline: true},
-				{Name: "👤 Author", Value: "DemoUser", Inline: true},
-				{Name: "📌 Issue Title", Value: fmt.Sprintf("#42 %s", customMsg), Inline: false},
-				{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
+			case "pr_opened":
+				aiComment := AIServiceInstance.GenerateComment(personality, "PR_Opened", "DemoUser", "test-repo", customMsg, "新規PR")
+				fields := []*discordgo.MessageEmbedField{
+					{Name: "📦 Repository", Value: "test-repo (Demo)", Inline: true},
+					{Name: "👤 Created by", Value: "DemoUser", Inline: true},
+					{Name: "📑 PR Title", Value: customMsg, Inline: false},
+					{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
+				}
+				embed = &discordgo.MessageEmbed{
+					Title:  "📢 新しい Pull Request が作成されました！ (Simulated)",
+					Color:  0x3498DB,
+					Fields: fields,
+				}
+
+			case "pr_merged":
+				aiComment := AIServiceInstance.GenerateComment(personality, "PR_Merged", "DemoUser", "test-repo", customMsg, "PRマージ")
+				fields := []*discordgo.MessageEmbedField{
+					{Name: "📦 Repository", Value: "test-repo (Demo)", Inline: true},
+					{Name: "👤 Merged by", Value: "DemoUser", Inline: true},
+					{Name: "🎉 PR Title", Value: customMsg, Inline: false},
+					{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
+				}
+				embed = &discordgo.MessageEmbed{
+					Title:  "🎉 Pull Request がマージされました！ (Simulated)",
+					Color:  0x9B59B6,
+					Fields: fields,
+				}
+
+			case "issue_opened":
+				aiComment := AIServiceInstance.GenerateComment(personality, "Issue_Opened", "DemoUser", "test-repo", customMsg, "Issue作成")
+				fields := []*discordgo.MessageEmbedField{
+					{Name: "📦 Repository", Value: "test-repo (Demo)", Inline: true},
+					{Name: "👤 Author", Value: "DemoUser", Inline: true},
+					{Name: "📌 Issue Title", Value: fmt.Sprintf("#1 %s", customMsg), Inline: false},
+					{Name: fmt.Sprintf("🤖 AI バディ (%s)", personality), Value: aiComment, Inline: false},
+				}
+				embed = &discordgo.MessageEmbed{
+					Title:  "🎫 新しい Issue が作成されました！ (Simulated)",
+					Color:  0xE67E22,
+					Fields: fields,
+				}
 			}
-			_ = SendEmbed("🎫 新しい Issue が作成されました！ (Simulated)", "", 0xE67E22, fields)
-		}
+
+			// 「考え中...」を生成結果のEmbedで上書き更新
+			_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Embeds: &[]*discordgo.MessageEmbed{embed},
+			})
+			if err != nil {
+				log.Printf("🚨 InteractionResponseEdit 失敗: %v", err)
+			}
+		}()
 	}
 }

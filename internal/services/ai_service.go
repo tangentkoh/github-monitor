@@ -34,12 +34,13 @@ func NewAIService() *AIService {
 	return &AIService{client: client}
 }
 
-// イベントに応じた AI コメント生成（ファイル変更・詳細情報対応）
+// イベントに応じた AI コメント生成
 func (s *AIService) GenerateComment(personality, eventType, username, repoName, detail, filesSummary string) string {
 	if s.client == nil {
 		return s.getFallbackMessage(personality, eventType, username)
 	}
 
+	// タイムアウトを 10 秒から 20 秒に延長
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
@@ -51,12 +52,7 @@ func (s *AIService) GenerateComment(personality, eventType, username, repoName, 
 
 【設定】
 - 性格: %s
-  - tsundere: ツンデレ。素直になれないが本当は進捗を喜んでいる。
-  - strict: 厳しい鬼上司。妥協を許さずコードの質に非常にシビア。
-  - relaxed: のんびり脱力系。まったりと優しく労う。「うへ～」が口癖。
-  - passionate: 熱血コーチ。ハイテンションで情熱的に応援する。
-  - gentle: 温和・臆病。控えめで優しく丁寧にフォローする。
-- イベント種別: %s (Push / PR_Opened / PR_Merged)
+- イベント種別: %s
 - ユーザー名: %s
 - リポジトリ名: %s
 - 主な内容: %s
