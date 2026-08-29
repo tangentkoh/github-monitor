@@ -55,31 +55,47 @@ func (s *AIService) GenerateComment(personality, eventType, username, repoName, 
 - 挨拶や余計な前置きは不要。セリフのみを出力すること。
 - 100〜120文字以内で簡潔にまとめること。`, personality, eventType, username, repoName, detail, filesSummary)
 
-	// 試行するモデルの優先順位: 3.7 -> 3.6 -> 3.5
+	// 試行するモデルの優先順位: 3.6-flash -> 3.5-flash -> 3.5-flash-lite
+	// 公式で利用可能な最新モデル（2025年8月時点）
+	// Gemini 2.0はシャットダウン予定、1.5は非推奨のため使用しない
 	targetModels := []string{
-		"gemini-3.7-flash",
 		"gemini-3.6-flash",
 		"gemini-3.5-flash",
+		"gemini-3.5-flash-lite",
 	}
 
 	for _, modelName := range targetModels {
-		// 各モデル試行ごとに 10 秒のタイムアウトを設定
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// 各モデル試行ごとに 15 秒のタイムアウトを設定（ネットワーク遅延対策）
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		
 		model := s.client.GenerativeModel(modelName)
 		model.SetTemperature(0.7)
 
+		log.Printf("🔄 [%s] で AI メッセージを生成中...", modelName)
 		resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 		cancel()
 
-		if err == nil && len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
-			if textPart, ok := resp.Candidates[0].Content.Parts[0].(genai.Text); ok {
-				log.Printf("✨ [%s] での AI メッセージ生成に成功しました", modelName)
-				return string(textPart)
-			}
+		if err != nil {
+			log.Printf("⚠️ [%s] 呼び出し失敗: %v (%T)", modelName, err, err)
+			continue
 		}
 
-		log.Printf("⚠️ [%s] 呼び出し失敗: %v -> 次のモデルへフォールバックします", modelName, err)
+		if resp == nil || len(resp.Candidates) == 0 {
+			log.Printf("⚠️ [%s] レスポンスが空です -> 次のモデルへフォールバック", modelName)
+			continue
+		}
+
+		if len(resp.Candidates[0].Content.Parts) == 0 {
+			log.Printf("⚠️ [%s] レスポンスパーツが空です -> 次のモデルへフォールバック", modelName)
+			continue
+		}
+
+		if textPart, ok := resp.Candidates[0].Content.Parts[0].(genai.Text); ok {
+			log.Printf("✨ [%s] での AI メッセージ生成に成功しました", modelName)
+			return string(textPart)
+		}
+
+		log.Printf("⚠️ [%s] レスポンスのパース失敗 -> 次のモデルへフォールバック", modelName)
 	}
 
 	log.Println("🚨 全モデルの呼び出しに失敗したため、オフライン定型文を使用します")

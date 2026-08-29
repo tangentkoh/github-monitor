@@ -19,12 +19,15 @@ var (
 func GetPersonality() string {
 	mu.RLock()
 	defer mu.RUnlock()
-	return CurrentPersonality
+	return GetConfigPersonality()
 }
 
 func SetPersonality(p string) {
 	mu.Lock()
 	defer mu.Unlock()
+	if err := SetPersonalityConfig(p); err != nil {
+		log.Printf("⚠️ 性格の設定保存に失敗: %v", err)
+	}
 	CurrentPersonality = p
 }
 
@@ -32,6 +35,13 @@ func GetChannelID() string {
 	mu.RLock()
 	defer mu.RUnlock()
 	return ChannelID
+}
+
+// GetChannelIDForGuild は GuildID 別のチャンネルIDを取得
+func GetChannelIDForGuild(guildID string) string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return GetChannelIDByGuild(guildID)
 }
 
 func SetChannelID(ch string) {
@@ -42,10 +52,19 @@ func SetChannelID(ch string) {
 
 func InitBot() (*discordgo.Session, error) {
 	token := os.Getenv("DISCORD_BOT_TOKEN")
-	ChannelID = os.Getenv("DISCORD_CHANNEL_ID")
-
 	if token == "" {
 		return nil, fmt.Errorf("DISCORD_BOT_TOKEN が設定されていません")
+	}
+
+	// 設定ファイルから読み込み
+	if err := LoadConfig(); err != nil {
+		log.Printf("⚠️ 設定の読み込みに失敗: %v（環境変数で続行）", err)
+	}
+
+	// ローカルメモリ変数も同期
+	ChannelID = GetChannelIDByGuild("")
+	if ChannelID == "" {
+		ChannelID = os.Getenv("DISCORD_CHANNEL_ID")
 	}
 
 	dg, err := discordgo.New("Bot " + token)

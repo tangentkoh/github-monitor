@@ -104,8 +104,24 @@ func CommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		})
 
 	case "setchannel":
-		SetChannelID(i.ChannelID)
-		msg := fmt.Sprintf("📢 通知先チャンネルを <#%s> に更新しました！", i.ChannelID)
+		// GuildID を取得してチャンネルIDを永続化
+		guildID := i.GuildID
+		if guildID == "" {
+			guildID = "default"
+		}
+		
+		if err := SetChannelIDForGuild(guildID, i.ChannelID); err != nil {
+			log.Printf("⚠️ チャンネル設定の保存に失敗: %v", err)
+			_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: fmt.Sprintf("⚠️ チャンネル設定の保存に失敗しました: %v", err),
+				},
+			})
+			return
+		}
+
+		msg := fmt.Sprintf("📢 通知先チャンネルを <#%s> に更新しました！（永続化済み）", i.ChannelID)
 		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{Content: msg},

@@ -18,3 +18,6 @@ Thumbs.db
 # エディタ設定
 .vscode/
 .idea/
+
+# 設定ファイル（永続化設定）
+config.json
